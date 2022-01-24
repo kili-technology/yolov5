@@ -40,7 +40,7 @@ def check_wandb_config_file(data_config_file):
     return data_config_file
 
 
-def check_wandb_dataset(data_file):
+def check_wandb_dataset(data_file, kili_api_key=''):
     is_trainset_wandb_artifact = False
     is_valset_wandb_artifact = False
     if check_file(data_file) and data_file.endswith('.yaml'):
@@ -53,7 +53,7 @@ def check_wandb_dataset(data_file):
     if is_trainset_wandb_artifact or is_valset_wandb_artifact:
         return data_dict
     else:
-        return check_dataset(data_file)
+        return check_dataset(data_file, kili_api_key=kili_api_key)
 
 
 def get_run_info(run_path):
@@ -177,7 +177,7 @@ class WandbLogger():
                     else:  # local resume
                         self.data_dict = check_wandb_dataset(opt.data)
                 else:
-                    self.data_dict = check_wandb_dataset(opt.data)
+                    self.data_dict = check_wandb_dataset(opt.data, kili_api_key=opt.kili_api_key)
                     self.wandb_artifact_data_dict = self.wandb_artifact_data_dict or self.data_dict
 
                     # write data_dict to config. useful for resuming from artifacts. Do this only when not resuming.

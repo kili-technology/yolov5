@@ -29,7 +29,7 @@ import torch
 import torchvision
 import yaml
 
-from utils.downloads import gsutil_getsize
+from utils.downloads import download_kili, gsutil_getsize
 from utils.metrics import box_iou, fitness
 
 # Settings
@@ -392,7 +392,7 @@ def check_font(font=FONT):
         torch.hub.download_url_to_file(url, str(font), progress=False)
 
 
-def check_dataset(data, autodownload=True):
+def check_dataset(data, autodownload=True, kili_api_key=''):
     # Download and/or unzip dataset if not found locally
     # Usage: https://github.com/ultralytics/yolov5/releases/download/v1.0/coco128_with_yaml.zip
 
@@ -402,11 +402,13 @@ def check_dataset(data, autodownload=True):
         download(data, dir=DATASETS_DIR, unzip=True, delete=False, curl=False, threads=1)
         data = next((DATASETS_DIR / Path(data).stem).rglob('*.yaml'))
         extract_dir, autodownload = data.parent, False
-
+    
     # Read yaml (optional)
     if isinstance(data, (str, Path)):
         with open(data, errors='ignore') as f:
             data = yaml.safe_load(f)  # dictionary
+    
+    download_kili(data, kili_api_key)
 
     # Resolve paths
     path = Path(extract_dir or data.get('path') or '')  # optional 'path' default to '.'

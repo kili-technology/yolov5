@@ -3,16 +3,21 @@
 Download utils
 """
 
+from nis import cat
 import os
 import platform
+import re
+import requests
 import subprocess
 import time
 import urllib
 from pathlib import Path
 from zipfile import ZipFile
 
+from kili.client import Kili
 import requests
 import torch
+from tqdm import tqdm
 
 
 def gsutil_getsize(url=''):
@@ -151,3 +156,69 @@ def get_token(cookie="./cookie"):
 #     print('Blob {} downloaded to {}.'.format(
 #         source_blob_name,
 #         destination_file_name))
+
+
+
+def download_kili(data, kili_api_key):
+    path = data.get('path', '')
+    if '/kili/' not in path:
+        return
+    project_id = path.split('/')[-1]
+    kili = Kili(api_key=kili_api_key)
+    total = kili.count_assets(project_id=project_id)
+    first = 100
+    assets = []
+    for skip in tqdm(range(0, total, first)):
+        assets += kili.assets(
+            project_id=project_id, 
+            first=first, 
+            skip=skip, 
+            disable_tqdm=True,
+            fields=[
+                'id', 
+                'content', 
+                'labels.createdAt', 
+                'labels.jsonResponse', 
+                'labels.labelType'])
+    assets = [{
+            **a,
+            'labels': [
+                l for l in sorted(a['labels'], key=lambda l: l['createdAt']) \
+                    if l['labelType'] in ['DEFAULT', 'REVIEW']
+            ][-1:],
+        } for a in assets]
+    assets = [a for a in assets if len(a['labels']) > 0]
+    train = data.get('train', '')
+    os.makedirs(os.path.join(path, train), exist_ok=True)
+    for asset in assets:
+        img_data = requests.get(asset['content'], headers={
+                'Authorization': f'X-API-Key: {kili_api_key}',
+            }).content
+        with open(os.path.join(path, train, asset['id'] + '.jpg'), 'wb') as handler:
+            handler.write(img_data)
+    names = data.get('names', [])
+    path_labels = os.path.join(path, re.sub('^images', 'labels', train))
+    os.makedirs(path_labels, exist_ok=True)
+    for asset in assets:
+        with open(os.path.join(path_labels, asset['id'] + '.txt'), 'w') as handler:
+            json_response = asset['labels'][0]['jsonResponse']
+            for job in json_response.values():
+                for annotation in job.get('annotations', []):
+                    name = annotation['categories'][0]['name']
+                    category = names.index(name)
+                    bounding_poly = annotation.get('boundingPoly', [])
+                    if len(bounding_poly) < 1:
+                        continue
+                    if 'normalizedVertices' not in bounding_poly[0]:
+                        continue
+                    normalized_vertices = bounding_poly[0]['normalizedVertices']
+                    x_s = [vertice['x'] for vertice in normalized_vertices]
+                    y_s = [vertice['y'] for vertice in normalized_vertices]
+                    x_min, y_min = min(x_s), min(y_s)
+                    x_max, y_max = max(x_s), max(y_s)
+                    _x_, _y_ = (x_max + x_min) / 2, (y_max + y_min) / 2
+                    _w_, _h_ = x_max - x_min, y_max - y_min
+                    handler.write(f'{category} {_x_} {_y_} {_w_} {_h_}\n')
+
+
+        
